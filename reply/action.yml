@@ -37,9 +37,19 @@ inputs:
     required: false
     default: ''
   prompt:
-    description: 'Prefix prompt for AI reply generation.'
+    description: |
+      Inline system prompt. Highest priority — overrides `prompt-file` and the
+      built-in default. Useful for one-off custom behavior in a single workflow.
     required: false
-    default: 'Please reply to the following GitHub Issue/comment in a concise, friendly, and helpful manner:'
+    default: ''
+  prompt-file:
+    description: |
+      Path to a markdown file (relative to the action's repo root or the
+      workflow's checkout) holding the system prompt. Used when `prompt`
+      is empty. Falls back to the built-in `prompt.default.md` if the file
+      is not found.
+    required: false
+    default: ''
 
 runs:
   using: composite
@@ -67,6 +77,9 @@ runs:
         INPUT_PROVIDER: ${{ inputs.provider }}
         INPUT_MODEL: ${{ inputs.model }}
         INPUT_PROMPT: ${{ inputs.prompt }}
+        INPUT_PROMPT_FILE: ${{ inputs.prompt-file }}
         GITHUB_REPOSITORY: ${{ github.repository }}
         GITHUB_EVENT_NAME: ${{ github.event_name }}
+        # Pass the action's own directory so reply.sh can read prompt.default.md
+        ACTION_PATH: ${{ github.action_path }}
       run: bash "${{ github.action_path }}/reply.sh"
