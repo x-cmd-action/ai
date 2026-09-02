@@ -1,3 +1,6 @@
 .gitattributes                  export-ignore
 .github                         export-ignore
+# Per-subcommand: ship only action.yml + script + built-in prompt default.
+# Other *.md (top-level README, docs) still excluded.
 *.md                            export-ignore
+!reply/prompt.default.md
