@@ -188,11 +188,19 @@ $CONTEXT"
 
   RESPONSE=$(cat "$AI_OUTPUT" 2>/dev/null || true)
 
-  # Strip reasoning blocks and extract wrapped output content if present.
-  RESPONSE=$(printf '%s' "$RESPONSE" | sed -e '/<think>/,/<\/think>/d')
+  # Strip reasoning blocks (multiline), x agent stdout tail noise, and
+  # any wrapped output fences. Order matters:
+  #   1. Drop <OUTPUT-CONTENT>...</OUTPUT-CONTENT> wrappers — keep inside.
   if printf '%s' "$RESPONSE" | grep -q '<OUTPUT-CONTENT>'; then
-    RESPONSE=$(printf '%s' "$RESPONSE" | sed -n '/<OUTPUT-CONTENT>/,/<\/OUTPUT-CONTENT>/p' | sed '1d;$d')
+    RESPONSE=$(printf '%s' "$RESPONSE" | awk '/<OUTPUT-CONTENT>/{flag=1; next} /<\/OUTPUT-CONTENT>/{flag=0} flag')
   fi
+  #   2. Drop <think>...</think> blocks (multiline).
+  RESPONSE=$(printf '%s' "$RESPONSE" | awk 'BEGIN{depth=0} {while(match($0,/<think>/)){depth++; $0=substr($0,RSTART+RLENGTH)} while(depth>0 && match($0,/<\/think>/)){depth--; $0=substr($0,RSTART+RLENGTH); if(depth==0) next} if(depth==0) print}' 2>/dev/null)
+  #   3. Drop x agent's "exitcode" / "stats" / "I|log" tail lines (anything
+  #      that starts with non-letter, non-CJK tokens).
+  RESPONSE=$(printf '%s' "$RESPONSE" | grep -vE '^-[[:space:]]*[✓✗WIE]\||exitcode:|^[[:space:]]*tags\.[[:space:]]*Let me' 2>/dev/null)
+  #   4. Drop any line that's just "Let me ..." (agent's internal monologue).
+  RESPONSE=$(printf '%s' "$RESPONSE" | grep -vE '^[[:space:]]*Let me (first|continue|structure|update)' 2>/dev/null)
 
   # Trim leading/trailing whitespace.
   REPLY_TEXT=$(printf '%s' "$RESPONSE" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
