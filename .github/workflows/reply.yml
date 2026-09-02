@@ -1,7 +1,7 @@
 name: reply
 
 # Live test: when @x is mentioned in an issue/comment, react + reply.
-# No AI token required (reply has no AI call).
+# Supports both static and AI-generated replies (use_ai: true).
 
 on:
   issue_comment:
@@ -28,3 +28,7 @@ jobs:
           keyword: '@x'
           reaction: eyes
           comment: '👀 on it'
+          use_ai: 'true'
+          provider: minimax
+        env:
+          MINIMAX_TOKEN: ${{ secrets.MINIMAX_TOKEN }}
