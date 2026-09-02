@@ -1,6 +1,7 @@
 name: ai/reply
 description: |
   React + reply when a configurable keyword is mentioned in issue/comment.
+  Supports static reply or AI-generated reply via x agent request --harness x-chat.
   Strict word-boundary match. Per-target reaction dedupe.
   Concurrency-safe: single in-flight + single pending.
 
@@ -16,14 +17,36 @@ inputs:
     required: false
     default: 'eyes'
   comment:
-    description: 'Reply comment body.'
+    description: 'Static reply comment body (used when use_ai is false).'
     required: false
     default: '👀 on it'
+  use_ai:
+    description: 'Generate reply via x agent request instead of using static comment.'
+    required: false
+    default: 'false'
+  harness:
+    description: 'AI harness to use when use_ai is true.'
+    required: false
+    default: 'x-chat'
+  provider:
+    description: 'AI provider for credential setup (minimax, deepseek, openai). If empty, inferred from API key env vars.'
+    required: false
+    default: ''
+  model:
+    description: 'AI model to use. Format is provider-specific, e.g. gpt-4, deepseek-chat.'
+    required: false
+    default: ''
+  prompt:
+    description: 'Prefix prompt for AI reply generation.'
+    required: false
+    default: 'Please reply to the following GitHub Issue/comment in a concise, friendly, and helpful manner:'
 
 runs:
   using: composite
   steps:
     - uses: x-cmd-action/x-cmd@v1
+      with:
+        stream: x7
 
     - uses: x-cmd-action/this-repo@v1
 
@@ -32,12 +55,18 @@ runs:
       env:
         GH_TOKEN: ${{ github.token }}
         ISSUE_NUM: ${{ github.event.issue.number }}
+        ISSUE_TITLE: ${{ github.event.issue.title }}
         COMMENT_ID: ${{ github.event.comment.id }}
         ISSUE_BODY: ${{ github.event.issue.body }}
         COMMENT_BODY: ${{ github.event.comment.body }}
         INPUT_KEYWORD: ${{ inputs.keyword }}
         INPUT_REACTION: ${{ inputs.reaction }}
         INPUT_COMMENT: ${{ inputs.comment }}
+        INPUT_USE_AI: ${{ inputs.use_ai }}
+        INPUT_HARNESS: ${{ inputs.harness }}
+        INPUT_PROVIDER: ${{ inputs.provider }}
+        INPUT_MODEL: ${{ inputs.model }}
+        INPUT_PROMPT: ${{ inputs.prompt }}
         GITHUB_REPOSITORY: ${{ github.repository }}
         GITHUB_EVENT_NAME: ${{ github.event_name }}
       run: bash "${{ github.action_path }}/reply.sh"
