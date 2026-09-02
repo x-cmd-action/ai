@@ -3,6 +3,12 @@
 
 set -euo errexit
 
+# Resolve action dir robustly. We can be invoked via:
+#   bash "${{ github.action_path }}/reply.sh"        # cwd == action_path
+# or sourced from elsewhere. BASH_SOURCE[0] is the most reliable.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
+: "${ACTION_PATH:=$SCRIPT_DIR}"
+
 # Ensure x-cmd is available in CI where the install step only creates ~/.x-cmd.root.
 if ! command -v x >/dev/null 2>&1 && [ -d "$HOME/.x-cmd.root/bin" ]; then
   export PATH="$HOME/.x-cmd.root/bin:$PATH"
