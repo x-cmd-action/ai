@@ -22,10 +22,7 @@ jobs:
       matrix:
         runner:
           - ubuntu-latest
-          - ubuntu-24.04
           - ubuntu-slim
-          - ubuntu-minimal
-          - ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
 
