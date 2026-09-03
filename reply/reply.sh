@@ -205,8 +205,6 @@ if [ "${INPUT_USE_AI:-false}" = "true" ]; then
   REPO_NAME=$(printf '%s' "$REPO_INFO" | jq -r '.nameWithOwner // empty' 2>/dev/null || true)
   REPO_DESC=$(printf '%s' "$REPO_INFO" | jq -r '.description // empty' 2>/dev/null || true)
   debug "repo_name=$REPO_NAME repo_desc=${REPO_DESC:0:30}"
-  REPO_NAME=$(printf '%s' "$REPO_INFO" | jq -r '.nameWithOwner // empty')
-  REPO_DESC=$(printf '%s' "$REPO_INFO" | jq -r '.description // empty')
 
   # Determine language: match the issue/comment's primary script.
   COMBINED_TEXT="${ISSUE_TITLE:-}${ISSUE_BODY:-}${COMMENT_BODY:-}"
