@@ -250,13 +250,16 @@ $CONTEXT"
   debug "AGENT_STDERR=$AGENT_STDERR"
   trap 'rm -f "$AI_OUTPUT" "$AGENT_STDERR"' EXIT
 
-  debug "before x agent request (subshell + stderr capture)"
-  # Subshell to confine any internal `exit` from x-cmd functions.
-  if ! ( x agent request --harness "$INPUT_HARNESS" --output "$AI_OUTPUT" --overwrite "$PROMPT" 2>"$AGENT_STDERR" ); then
+  debug "before x agent request"
+  # x agent request spawns child processes that hold temp files; do NOT
+  # wrap in a subshell or its post-run cleanup races on those files
+  # ("corrupted data file" / "cannot open pidofsubshell.pid"). The 'if !'
+  # already masks non-zero exits; we add a defensive || true fallback
+  # for the inner failure cases.
+  if ! x agent request --harness "$INPUT_HARNESS" --output "$AI_OUTPUT" --overwrite "$PROMPT" 2>"$AGENT_STDERR"; then
     echo "reply: AI call failed"
-    debug "x agent request failed"
-    debug "agent stderr: $(wc -c <"$AGENT_STDERR")B"
-    debug "agent stderr tail: $(tail -10 "$AGENT_STDERR" | tr '\n' '|')"
+    debug "x agent request non-zero"
+    debug "agent stderr tail: $(tail -15 "$AGENT_STDERR" 2>/dev/null | tr '\n' '|')"
   else
     debug "x agent request returned 0"
   fi
