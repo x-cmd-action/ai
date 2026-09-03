@@ -256,14 +256,15 @@ $CONTEXT"
   # ("corrupted data file" / "cannot open pidofsubshell.pid"). The 'if !'
   # already masks non-zero exits; we add a defensive || true fallback
   # for the inner failure cases.
-  if ! x agent request --harness "$INPUT_HARNESS" --output "$AI_OUTPUT" --overwrite "$PROMPT" 2>"$AGENT_STDERR"; then
-    echo "reply: AI call failed"
-    debug "x agent request non-zero"
+  RC=0
+  x agent request --harness "$INPUT_HARNESS" --output "$AI_OUTPUT" --overwrite "$PROMPT" 2>"$AGENT_STDERR" || RC=$?
+  debug "x agent request rc=$RC"
+  if [ "$RC" != "0" ]; then
+    echo "reply: AI call failed (rc=$RC)"
     debug "agent stderr tail: $(tail -15 "$AGENT_STDERR" 2>/dev/null | tr '\n' '|')"
-  else
-    debug "x agent request returned 0"
   fi
   debug "after x agent request"
+  debug "agent stderr full (last 500 chars): $(tail -c 500 "$AGENT_STDERR" 2>/dev/null | tr '\n' '|')"
   debug "AI_OUTPUT size: $(wc -c <"$AI_OUTPUT")B"
   debug "AI_OUTPUT content: $(head -c 200 "$AI_OUTPUT")"
 
