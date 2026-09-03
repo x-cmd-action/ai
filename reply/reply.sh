@@ -1,46 +1,53 @@
 #!/usr/bin/env bash
 # x-cmd-action/ai/reply — react + reply on keyword match
+#
+# IMPORTANT: NO `set -e` / `set -u` / `set -o pipefail` anywhere in this
+# script. Reasoning:
+#
+#   * x-cmd source-loads `x` as a SHELL FUNCTION; on error paths those
+#     functions run `exit 1` instead of `return 1`. `set -e` does NOT
+#     rescue the parent shell from an internal `exit` — it kills the
+#     script the moment any sourced-in x-cmd function bails.
+#
+#   * `set -u` trips on every probed unset var — X's own opening lines
+#     do `$var` checks; alias and function bodies inside x-cmd do too.
+#
+#   * `set -o pipefail` makes `cmd | grep` exit 1 when grep finds no
+#     match, which is a normal case (it means "no match", not failure).
+#
+# We instead rely on:
+#   * explicit `if [ -n "$var" ]; then x || true; fi` blocks
+#   * explicit `${VAR:-default}` for any possibly-unset variable
+#   * explicit `: "${INPUT:?required}"` parameter-required patterns
+#
+# This trades a small amount of early-failure speed for not being
+# killed by a sourced function that exits.
 
 debug() { printf 'DEBUG[%s] %s\n' "$(date +%T.%3N)" "$*" >&2; }
-trap 'rc=$?; debug "trap EXIT rc=$rc line=${LINENO}"' EXIT
 
-# Resolve action dir robustly. We can be invoked via:
-#   bash "${{ github.action_path }}/reply.sh"        # cwd == action_path
-# or sourced from elsewhere. BASH_SOURCE[0] is the most reliable.
+# Resolve action dir robustly.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 debug "SCRIPT_DIR=$SCRIPT_DIR"
 : "${ACTION_PATH:=$SCRIPT_DIR}"
 
-# Bring x-cmd into scope. The `x-cmd-action/x-cmd@v1` install step places
-# files under $HOME/.x-cmd.root but the next GH Actions step runs under
-# `bash --noprofile --norc`, which never sources ~/.bashrc. Sourcing the
-# boot shim is the canonical way to expose `x`.
-#
-# X probes unset env vars on its first lines, so DELAY `set -u` until
-# after the source. `set -e` is left on (the default for `shell: bash`).
-debug "before X source, x=$(command -v x || echo MISSING) PATH=${PATH#*:}"
+# Bring x-cmd into scope.
 if [ -f "$HOME/.x-cmd.root/X" ]; then
   debug "sourcing $HOME/.x-cmd.root/X"
-  if . "$HOME/.x-cmd.root/X" 2>/tmp/x-source.err; then
-    debug "X source rc=0, x=$(command -v x || echo MISSING)"
-  else
-    debug "X source rc=$? stderr=$(cat /tmp/x-source.err)"
-    cat /tmp/x-source.err >&2
-  fi
-else
-  debug "no $HOME/.x-cmd.root/X"
+  # `.` cannot be wrapped in `( )` (we want the env to leak into us).
+  . "$HOME/.x-cmd.root/X" || debug "X source non-zero (continuing)"
+  debug "x now: $(command -v x || echo MISSING)"
 fi
-
-set -eu
-set -o pipefail
-debug "strict mode ON"
 
 : "${INPUT_KEYWORD:=@x}"
 : "${INPUT_REACTION:=eyes}"
 : "${INPUT_COMMENT:=👀 on it}"
-debug "before ISSUE_NUM check"
 : "${ISSUE_NUM:?ISSUE_NUM required}"
-debug "ISSUE_NUM=$ISSUE_NUM"
+: "${INPUT_PROVIDER:=}"
+: "${INPUT_MODEL:=}"
+: "${INPUT_HARNESS:=x-chat}"
+: "${INPUT_USE_AI:=false}"
+: "${GH_TOKEN:?GH_TOKEN required}"
+debug "after param defaults: ISSUE_NUM=$ISSUE_NUM USE_AI=$INPUT_USE_AI"
 
 # ── Configure AI provider / apikey when AI mode is used ──
 setup_ai() {
@@ -150,19 +157,11 @@ echo "reply: target=$TARGET_DESC"
 
 # ── Build reply body (static or AI-generated) ──
 if [ "${INPUT_USE_AI:-false}" = "true" ]; then
-  : "${INPUT_HARNESS:=x-chat}"
-
   # Provider cfg is best-effort: env-var fallback covers every
-  # supported provider. The inner `|| true`s in setup_ai don't always
-  # protect against an early return under `set -euo errexit` (a
-  # sourced-in alias or unset-var lookup can still trip `-u` mid-fn).
+  # supported provider. setup_ai internally tolerates failures.
   debug "calling setup_ai (provider=$INPUT_PROVIDER, model=${INPUT_MODEL:-default})"
-  set +e
   setup_ai
-  debug "setup_ai rc=$?"
-  setup_ai_rc=$?
-  set -e
-  debug "setup_ai_rc=$setup_ai_rc (continuing regardless)"
+  debug "setup_ai_rc=$?"
 
   # Resolve the system prompt in priority order:
   #   1. inputs.prompt (inline, highest priority)
@@ -197,13 +196,9 @@ if [ "${INPUT_USE_AI:-false}" = "true" ]; then
   # Pull repo context (owner/name + description) so the AI doesn't
   # guess — it's already running inside this repo and can be referenced.
   debug "calling gh repo view"
-  set +e
   REPO_INFO=$(gh repo view --json nameWithOwner,description 2>/dev/null || echo '{}')
-  gh_rc=$?
-  set -e
-  debug "gh repo view rc=$gh_rc repo_info_len=${#REPO_INFO}"
-  REPO_NAME=$(printf '%s' "$REPO_INFO" | jq -r '.nameWithOwner // empty' 2>/dev/null || true)
-  REPO_DESC=$(printf '%s' "$REPO_INFO" | jq -r '.description // empty' 2>/dev/null || true)
+  REPO_NAME=$(printf '%s' "$REPO_INFO" | jq -r '.nameWithOwner // empty' 2>/dev/null || printf '')
+  REPO_DESC=$(printf '%s' "$REPO_INFO" | jq -r '.description // empty' 2>/dev/null || printf '')
   debug "repo_name=$REPO_NAME repo_desc=${REPO_DESC:0:30}"
 
   debug "before COMBINED_TEXT"
