@@ -1,23 +1,46 @@
 #!/usr/bin/env bash
 # x-cmd-action/ai/reply — react + reply on keyword match
 
-set -euo errexit
+debug() { printf 'DEBUG[%s] %s\n' "$(date +%T.%3N)" "$*" >&2; }
+trap 'rc=$?; debug "trap EXIT rc=$rc line=${LINENO}"' EXIT
 
 # Resolve action dir robustly. We can be invoked via:
 #   bash "${{ github.action_path }}/reply.sh"        # cwd == action_path
 # or sourced from elsewhere. BASH_SOURCE[0] is the most reliable.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
+debug "SCRIPT_DIR=$SCRIPT_DIR"
 : "${ACTION_PATH:=$SCRIPT_DIR}"
 
-# Ensure x-cmd is available in CI where the install step only creates ~/.x-cmd.root.
-if ! command -v x >/dev/null 2>&1 && [ -d "$HOME/.x-cmd.root/bin" ]; then
-  export PATH="$HOME/.x-cmd.root/bin:$PATH"
+# Bring x-cmd into scope. The `x-cmd-action/x-cmd@v1` install step places
+# files under $HOME/.x-cmd.root but the next GH Actions step runs under
+# `bash --noprofile --norc`, which never sources ~/.bashrc. Sourcing the
+# boot shim is the canonical way to expose `x`.
+#
+# X probes unset env vars on its first lines, so DELAY `set -u` until
+# after the source. `set -e` is left on (the default for `shell: bash`).
+debug "before X source, x=$(command -v x || echo MISSING) PATH=${PATH#*:}"
+if [ -f "$HOME/.x-cmd.root/X" ]; then
+  debug "sourcing $HOME/.x-cmd.root/X"
+  if . "$HOME/.x-cmd.root/X" 2>/tmp/x-source.err; then
+    debug "X source rc=0, x=$(command -v x || echo MISSING)"
+  else
+    debug "X source rc=$? stderr=$(cat /tmp/x-source.err)"
+    cat /tmp/x-source.err >&2
+  fi
+else
+  debug "no $HOME/.x-cmd.root/X"
 fi
+
+set -eu
+set -o pipefail
+debug "strict mode ON"
 
 : "${INPUT_KEYWORD:=@x}"
 : "${INPUT_REACTION:=eyes}"
 : "${INPUT_COMMENT:=👀 on it}"
+debug "before ISSUE_NUM check"
 : "${ISSUE_NUM:?ISSUE_NUM required}"
+debug "ISSUE_NUM=$ISSUE_NUM"
 
 # ── Configure AI provider / apikey when AI mode is used ──
 setup_ai() {
@@ -112,7 +135,13 @@ if [ "${INPUT_USE_AI:-false}" = "true" ]; then
   # supported provider. The inner `|| true`s in setup_ai don't always
   # protect against an early return under `set -euo errexit` (a
   # sourced-in alias or unset-var lookup can still trip `-u` mid-fn).
-  # setup_ai || true
+  debug "calling setup_ai (provider=$INPUT_PROVIDER, model=${INPUT_MODEL:-default})"
+  set +e
+  setup_ai
+  debug "setup_ai rc=$?"
+  setup_ai_rc=$?
+  set -e
+  debug "setup_ai_rc=$setup_ai_rc (continuing regardless)"
 
   # Resolve the system prompt in priority order:
   #   1. inputs.prompt (inline, highest priority)
@@ -146,7 +175,15 @@ if [ "${INPUT_USE_AI:-false}" = "true" ]; then
 
   # Pull repo context (owner/name + description) so the AI doesn't
   # guess — it's already running inside this repo and can be referenced.
+  debug "calling gh repo view"
+  set +e
   REPO_INFO=$(gh repo view --json nameWithOwner,description 2>/dev/null || echo '{}')
+  gh_rc=$?
+  set -e
+  debug "gh repo view rc=$gh_rc repo_info_len=${#REPO_INFO}"
+  REPO_NAME=$(printf '%s' "$REPO_INFO" | jq -r '.nameWithOwner // empty' 2>/dev/null || true)
+  REPO_DESC=$(printf '%s' "$REPO_INFO" | jq -r '.description // empty' 2>/dev/null || true)
+  debug "repo_name=$REPO_NAME repo_desc=${REPO_DESC:0:30}"
   REPO_NAME=$(printf '%s' "$REPO_INFO" | jq -r '.nameWithOwner // empty')
   REPO_DESC=$(printf '%s' "$REPO_INFO" | jq -r '.description // empty')
 
