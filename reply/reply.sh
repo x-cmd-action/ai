@@ -50,18 +50,23 @@ setup_ai() {
   case "$provider" in
     minimax)
       api_key="${MINIMAX_TOKEN:-${MINIMAX_APIKEY:-}}"
-      [ -n "$api_key" ] && x minimax --cfg apikey="$api_key"
-      [ -n "$model" ] && x minimax --cfg model="$model"
+      # Each `x ... --cfg apikey=...` writes to ~/.x-cmd.root; the call
+      # occasionally returns non-zero on ubuntu-slim under load (env
+      # yanks / sandbox quirks). Provider config is best-effort — the
+      # subsequent `x agent request` also resolves MINIMAX_TOKEN via
+      # env-var fallback, so missing cfg still works.
+      [ -n "$api_key" ] && x minimax --cfg apikey="$api_key" || true
+      [ -n "$model" ] && x minimax --cfg model="$model" || true
       ;;
     deepseek)
       api_key="${DEEPSEEK_API_KEY:-${DEEPSEEK_APIKEY:-}}"
-      [ -n "$api_key" ] && x deepseek --cfg apikey="$api_key"
-      [ -n "$model" ] && x deepseek --cfg model="$model"
+      [ -n "$api_key" ] && x deepseek --cfg apikey="$api_key" || true
+      [ -n "$model" ] && x deepseek --cfg model="$model" || true
       ;;
     openai)
       api_key="${OPENAI_API_KEY:-${OPENAI_APIKEY:-}}"
-      [ -n "$api_key" ] && x openai --cfg apikey="$api_key"
-      [ -n "$model" ] && x openai --cfg model="$model"
+      [ -n "$api_key" ] && x openai --cfg apikey="$api_key" || true
+      [ -n "$model" ] && x openai --cfg model="$model" || true
       ;;
     *)
       echo "reply: unknown provider '$provider', skipping credential setup"
