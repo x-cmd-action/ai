@@ -36,6 +36,13 @@ jobs:
           MINIMAX_TOKEN: ${{ secrets.MINIMAX_TOKEN }}
         run: |
           set -uo pipefail  # no -e: we want to capture failure mode
+          # x-cmd-action installs ~/.x-cmd.root but the next GH Actions
+          # step runs under `bash --noprofile --norc`, so ~/.bashrc is
+          # never sourced. reply.sh has a defensive PATH+=...
+          # ~/.x-cmd.root/bin fallback; mirror that here.
+          export PATH="$HOME/.x-cmd.root/bin:$PATH"
+          # Some x-cmd invocations want the boot shim sourced too.
+          [ -f "$HOME/.x-cmd.root/X" ] && . "$HOME/.x-cmd.root/X"
           OUT=/tmp/ai-out.txt
           ERR=/tmp/ai-err.log
           : > "$OUT"
