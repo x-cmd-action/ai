@@ -123,7 +123,8 @@ if [ "${INPUT_USE_AI:-false}" = "true" ]; then
   # supported provider. The inner `|| true`s in setup_ai don't always
   # protect against an early return under `set -euo errexit` (a
   # sourced-in alias or unset-var lookup can still trip `-u` mid-fn).
-  setup_ai || true
+  echo "reply: SKIPPED setup_ai (debug)"
+  # setup_ai || true
 
   # Resolve the system prompt in priority order:
   #   1. inputs.prompt (inline, highest priority)
