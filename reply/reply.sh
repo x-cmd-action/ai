@@ -69,8 +69,17 @@ setup_ai() {
       debug "setup_ai: case=minimax before MINIMAX_TOKEN expansion"
       api_key="${MINIMAX_TOKEN:-${MINIMAX_APIKEY:-}}"
       debug "setup_ai: api_key len=${#api_key}"
-      [ -n "$api_key" ] && x minimax --cfg apikey="$api_key" || true
-      debug "setup_ai: after first x minimax (rc ignored)"
+      debug "setup_ai: type x = $(type x 2>&1 | head -1)"
+      debug "setup_ai: about to invoke: x minimax --cfg apikey=...(len=${#api_key})"
+      XMIN_OUT=$(mktemp); XMIN_ERR=$(mktemp)
+      debug "setup_ai: x minimax tmp=$XMIN_OUT err=$XMIN_ERR"
+      # Invoke via a subshell so even an inner `exit` can't kill us:
+      ( set +eu; set +o pipefail
+        x minimax --cfg apikey="$api_key" >"$XMIN_OUT" 2>"XMIN_ERR.real" || true
+      )
+      debug "setup_ai: x minimax --cfg apikey returned; out=$(wc -c <"$XMIN_OUT")B err=$(wc -c <XMIN_ERR.real)B content=$(cat XMIN_ERR.real | head -3 | tr '\n' '|')"
+      rm -f "$XMIN_OUT" XMIN_ERR.real
+      debug "setup_ai: after first x minimax"
       [ -n "$model" ] && x minimax --cfg model="$model" || true
       debug "setup_ai: after second x minimax"
       ;;
