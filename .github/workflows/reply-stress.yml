@@ -1,0 +1,56 @@
+name: reply-stress
+
+# Same wiring as `reply.yml` but pinned to a specific commit SHA of
+# `x-cmd-action/ai/reply` (currently `a3e1809`). We use this to stress
+# the recent fixes (defensive awk/grep/sed + x-cmd loader) before we
+# move the v1 tag forward. Stress script opens issues with @x; this
+# workflow runs and posts a bot reply, same as production `reply.yml`.
+#
+# SECURITY: pinning a SHA bypasses tag-trust; only re-pin after the
+# commit passes stress. After pass, advance `v1` and revert reply.yml
+# to use `@v1` again.
+
+on:
+  workflow_dispatch:
+  issues:
+    types: [opened]
+
+concurrency:
+  group: aireply-bot-stress
+  cancel-in-progress: false
+
+jobs:
+  reply:
+    if: github.event.sender.type != 'Bot'
+    runs-on: ubuntu-slim
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: x-cmd-action/x-cmd@v1
+        with:
+          stream: x7
+
+      - uses: x-cmd-action/this-repo@v1
+
+      - name: run ai reply
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MINIMAX_TOKEN: ${{ secrets.MINIMAX_TOKEN }}
+          ISSUE_NUM: ${{ github.event.issue.number }}
+          ISSUE_TITLE: ${{ github.event.issue.title }}
+          ISSUE_BODY: ${{ github.event.issue.body }}
+          INPUT_KEYWORD: '@x'
+          INPUT_REACTION: eyes
+          INPUT_COMMENT: '👀 on it'
+          INPUT_USE_AI: 'true'
+          INPUT_HARNESS: x-chat
+          INPUT_PROVIDER: minimax
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
+          # Pin to the SHA that includes the slim-friendly fixes.
+          ACTION_PATH: ${{ github.workspace }}/reply
+        run: bash "${{ github.workspace }}/reply/reply.sh"
