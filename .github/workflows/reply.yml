@@ -18,7 +18,7 @@ concurrency:
 jobs:
   reply:
     if: github.event.sender.type != 'Bot'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-slim
     permissions:
       contents: read
       issues: write
