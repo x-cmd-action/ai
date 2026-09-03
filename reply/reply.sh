@@ -44,9 +44,13 @@ debug "ISSUE_NUM=$ISSUE_NUM"
 
 # ── Configure AI provider / apikey when AI mode is used ──
 setup_ai() {
+  debug "setup_ai: ENTER (PARAMS: $* — FUNCNAME=${FUNCNAME[*]@K})"
   local provider="${INPUT_PROVIDER:-}"
+  debug "setup_ai: provider=$provider"
   local model="${INPUT_MODEL:-}"
+  debug "setup_ai: model=$model"
   local api_key
+  debug "setup_ai: api_key declared"
 
   # Fallback provider detection from common API key env vars.
   if [ -z "$provider" ]; then
@@ -58,17 +62,17 @@ setup_ai() {
   fi
 
   echo "reply: configuring ai provider=$provider model=${model:-default}"
+  debug "setup_ai: about to enter case"
 
   case "$provider" in
     minimax)
+      debug "setup_ai: case=minimax before MINIMAX_TOKEN expansion"
       api_key="${MINIMAX_TOKEN:-${MINIMAX_APIKEY:-}}"
-      # Each `x ... --cfg apikey=...` writes to ~/.x-cmd.root; the call
-      # occasionally returns non-zero on ubuntu-slim under load (env
-      # yanks / sandbox quirks). Provider config is best-effort — the
-      # subsequent `x agent request` also resolves MINIMAX_TOKEN via
-      # env-var fallback, so missing cfg still works.
+      debug "setup_ai: api_key len=${#api_key}"
       [ -n "$api_key" ] && x minimax --cfg apikey="$api_key" || true
+      debug "setup_ai: after first x minimax (rc ignored)"
       [ -n "$model" ] && x minimax --cfg model="$model" || true
+      debug "setup_ai: after second x minimax"
       ;;
     deepseek)
       api_key="${DEEPSEEK_API_KEY:-${DEEPSEEK_APIKEY:-}}"
@@ -85,10 +89,14 @@ setup_ai() {
       ;;
   esac
 
+  debug "setup_ai: case done"
   # Point the x-chat harness at the chosen provider.
   if [ "${INPUT_HARNESS:-x-chat}" = "x-chat" ]; then
+    debug "setup_ai: about to x chat --cur provider"
     x chat --cur provider="$provider" 2>/dev/null || true
+    debug "setup_ai: after x chat --cur"
   fi
+  debug "setup_ai: EXIT"
 }
 
 # ── Strict keyword match (word boundary) ──
