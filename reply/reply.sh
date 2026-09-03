@@ -206,13 +206,15 @@ if [ "${INPUT_USE_AI:-false}" = "true" ]; then
   REPO_DESC=$(printf '%s' "$REPO_INFO" | jq -r '.description // empty' 2>/dev/null || true)
   debug "repo_name=$REPO_NAME repo_desc=${REPO_DESC:0:30}"
 
-  # Determine language: match the issue/comment's primary script.
+  debug "before COMBINED_TEXT"
   COMBINED_TEXT="${ISSUE_TITLE:-}${ISSUE_BODY:-}${COMMENT_BODY:-}"
+  debug "COMBINED_TEXT_LEN=${#COMBINED_TEXT}"
   if printf '%s' "$COMBINED_TEXT" | grep -qE '[一-龥]'; then
     REPLY_LANG="zh-CN"
   else
     REPLY_LANG="en"
   fi
+  debug "REPLY_LANG=$REPLY_LANG"
 
   if [ "$GITHUB_EVENT_NAME" = "issue_comment" ]; then
     CONTEXT="Repository: ${REPO_NAME:-unknown}
