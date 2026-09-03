@@ -216,6 +216,7 @@ if [ "${INPUT_USE_AI:-false}" = "true" ]; then
   fi
   debug "REPLY_LANG=$REPLY_LANG"
 
+  debug "before CONTEXT block"
   if [ "$GITHUB_EVENT_NAME" = "issue_comment" ]; then
     CONTEXT="Repository: ${REPO_NAME:-unknown}
 Repository description: ${REPO_DESC:-n/a}
@@ -241,8 +242,23 @@ User language: $REPLY_LANG
 
 $CONTEXT"
 
+  debug "before x agent --cur set zero_harness (subshell)"
   # Pre-configure the default harness so x agent request doesn't fall back.
-  x agent --cur set zero_harness="$INPUT_HARNESS" 2>/dev/null || true
+  ( x agent --cur set zero_harness="$INPUT_HARNESS" 2>/dev/null ) || debug "x agent --cur non-zero"
+  debug "after x agent --cur set"
+
+  debug "before mktemp"
+  echo "reply: calling ai (harness=$INPUT_HARNESS)..."
+  AI_OUTPUT=$(mktemp)
+  debug "AI_OUTPUT=$AI_OUTPUT"
+  trap 'rm -f "$AI_OUTPUT"' EXIT
+
+  debug "before x agent request"
+  if ! x agent request --harness "$INPUT_HARNESS" --output "$AI_OUTPUT" --overwrite "$PROMPT"; then
+    echo "reply: AI call failed"
+    exit 1
+  fi
+  debug "after x agent request"
 
   echo "reply: calling ai (harness=$INPUT_HARNESS)..."
   AI_OUTPUT=$(mktemp)
