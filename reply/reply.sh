@@ -253,10 +253,13 @@ $CONTEXT"
   debug "AI_OUTPUT=$AI_OUTPUT"
   trap 'rm -f "$AI_OUTPUT"' EXIT
 
-  debug "before x agent request"
-  if ! x agent request --harness "$INPUT_HARNESS" --output "$AI_OUTPUT" --overwrite "$PROMPT"; then
+  debug "before x agent request (subshell)"
+  # Subshell to confine any internal `exit` from x-cmd functions.
+  if ! ( x agent request --harness "$INPUT_HARNESS" --output "$AI_OUTPUT" --overwrite "$PROMPT" ); then
     echo "reply: AI call failed"
-    exit 1
+    debug "x agent request failed"
+  else
+    debug "x agent request returned 0"
   fi
   debug "after x agent request"
 
