@@ -1,29 +1,18 @@
 #!/usr/bin/env bash
 # x-cmd-action/ai/reply — react + reply on keyword match
 
+set -euo errexit
+
 # Resolve action dir robustly. We can be invoked via:
 #   bash "${{ github.action_path }}/reply.sh"        # cwd == action_path
 # or sourced from elsewhere. BASH_SOURCE[0] is the most reliable.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 : "${ACTION_PATH:=$SCRIPT_DIR}"
 
-# Bring x-cmd into scope. The `x-cmd-action/x-cmd@v1` install step
-# places files under $HOME/.x-cmd.root but the next GH Actions step runs
-# under `bash --noprofile --norc`, which never sources ~/.bashrc, so
-# the canonical way to expose `x` is to source the boot shim
-# $HOME/.x-cmd.root/X directly.
-#
-# The shim's opening lines probe unset env vars (`___X_CMD_ROOT` etc.),
-# which trips `set -u`. We DELAY strict mode until AFTER the source.
-# `set -e` is the default — keep it on so an unexpected X failure
-# surfaces loudly.
-if [ -f "$HOME/.x-cmd.root/X" ]; then
-  # shellcheck disable=SC1091
-  . "$HOME/.x-cmd.root/X"
+# Ensure x-cmd is available in CI where the install step only creates ~/.x-cmd.root.
+if ! command -v x >/dev/null 2>&1 && [ -d "$HOME/.x-cmd.root/bin" ]; then
+  export PATH="$HOME/.x-cmd.root/bin:$PATH"
 fi
-
-set -eu
-set -o pipefail
 
 : "${INPUT_KEYWORD:=@x}"
 : "${INPUT_REACTION:=eyes}"
@@ -123,7 +112,6 @@ if [ "${INPUT_USE_AI:-false}" = "true" ]; then
   # supported provider. The inner `|| true`s in setup_ai don't always
   # protect against an early return under `set -euo errexit` (a
   # sourced-in alias or unset-var lookup can still trip `-u` mid-fn).
-  echo "reply: SKIPPED setup_ai (debug)"
   # setup_ai || true
 
   # Resolve the system prompt in priority order:
