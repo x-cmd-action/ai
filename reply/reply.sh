@@ -276,10 +276,31 @@ $CONTEXT"
   if printf '%s' "$RESPONSE" | grep -q '<OUTPUT-CONTENT>'; then
     RESPONSE=$(printf '%s' "$RESPONSE" | awk '/<OUTPUT-CONTENT>/{flag=1; next} /<\/OUTPUT-CONTENT>/{flag=0} flag' 2>/dev/null || true)
   fi
-  #   2. Drop <think>...</think> blocks (multiline). The inner `|| printf '%s'
-  #      "$RESPONSE"` keeps the assignment valid even if awk returns 1
-  #      under a different mawk/gawk build (ubuntu-slim runs mawk).
-  RESPONSE=$(printf '%s' "$RESPONSE" | awk 'BEGIN{depth=0} {while(match($0,/<think>/)){depth++; $0=substr($0,RSTART+RLENGTH)} while(depth>0 && match($0,/<\/think>/)){depth--; $0=substr($0,RSTART+RLENGTH); if(depth==0) next} if(depth==0) print}' 2>/dev/null || printf '%s' "$RESPONSE")
+  #   2. Drop <think>...</think> blocks (multiline). If a line opens <think>
+  #      but no closing tag appears, KEEP the rest of the line (don't drop
+  #      everything — model sometimes returns truncated thinking).
+  RESPONSE=$(printf '%s' "$RESPONSE" | awk '
+    BEGIN{depth=0}
+    {
+      line = $0
+      out  = ""
+      while (length(line) > 0) {
+        if (depth == 0) {
+          p = index(line, "<think>")
+          if (p == 0) { out = out line; break }
+          out = out substr(line, 1, p - 1)
+          line = substr(line, p + RLENGTH_7)
+          depth = 1
+        } else {
+          p = index(line, "</think>")
+          if (p == 0) { out = out line; break }
+          line = substr(line, p + RLENGTH_8)
+          depth = 0
+        }
+      }
+      print out
+    }
+  ' 2>/dev/null || printf '%s' "$RESPONSE")
   #   3. Drop x agent's "exitcode" / "stats" / "I|log" tail lines.
   #      grep -vE returns 1 when nothing matches, which trips `set -e`.
   RESPONSE=$(printf '%s' "$RESPONSE" | grep -vE '^-[[:space:]]*[✓✗WIE]\||exitcode:|^[[:space:]]*tags\.[[:space:]]*Let me' 2>/dev/null || printf '%s' "$RESPONSE")
