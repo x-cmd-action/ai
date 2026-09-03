@@ -42,7 +42,7 @@ jobs:
           set -e
           shopt -s nullglob
           files=(probe-*.json)
-          if [ "${#files[@}" -gt 0 ]; then
+          if [ "${#files[@]}" -gt 0 ]; then
             mkdir -p probe-artifact
             cp -v probe-*.json probe-artifact/
           else
