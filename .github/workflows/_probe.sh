@@ -47,7 +47,11 @@ print_tool() {
     local tool="$1"; shift
     local out
     if out=$("$@" 2>&1); then
-        out=$(printf '%s' "$out" | head -1)
+        # Trim to first line. Use parameter expansion (no pipe) so we
+        # don't trip set -o pipefail when the upstream tool, e.g.
+        # perl --version, writes a lot of data and `head` closes the
+        # pipe early.
+        out="${out%%$'\n'*}"
     else
         out="(not installed)"
     fi
