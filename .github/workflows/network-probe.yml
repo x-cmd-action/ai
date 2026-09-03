@@ -43,6 +43,9 @@ jobs:
               https://api.openai.com \
               https://api.deepseek.com \
               https://huggingface.co \
+              https://api.minimaxi.com \
+              https://api.minimaxi.com/anthropic \
+              https://platform.minimaxi.com \
           ; do
             printf '%-50s ' "$url"
             code=$(curl -sS -o /dev/null -w '%{http_code}|%{time_total}' --connect-timeout 3 --max-time 8 "$url" 2>&1 || echo "FAIL")
