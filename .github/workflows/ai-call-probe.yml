@@ -35,6 +35,9 @@ jobs:
         env:
           MINIMAX_TOKEN: ${{ secrets.MINIMAX_TOKEN }}
         run: |
+          # GH Actions wraps `shell: bash` with `-e -o pipefail`; we want
+          # to keep going past non-zero so we can see what's happening.
+          set +e
           # x-cmd-action installs ~/.x-cmd.root but the next GH Actions
           # step runs under `bash --noprofile --norc`, so ~/.bashrc is
           # never sourced. reply.sh has a defensive PATH+=...
