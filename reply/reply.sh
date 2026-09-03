@@ -192,18 +192,20 @@ $CONTEXT"
   # any wrapped output fences. Order matters:
   #   1. Drop <OUTPUT-CONTENT>...</OUTPUT-CONTENT> wrappers — keep inside.
   if printf '%s' "$RESPONSE" | grep -q '<OUTPUT-CONTENT>'; then
-    RESPONSE=$(printf '%s' "$RESPONSE" | awk '/<OUTPUT-CONTENT>/{flag=1; next} /<\/OUTPUT-CONTENT>/{flag=0} flag')
+    RESPONSE=$(printf '%s' "$RESPONSE" | awk '/<OUTPUT-CONTENT>/{flag=1; next} /<\/OUTPUT-CONTENT>/{flag=0} flag' 2>/dev/null || true)
   fi
-  #   2. Drop <think>...</think> blocks (multiline).
-  RESPONSE=$(printf '%s' "$RESPONSE" | awk 'BEGIN{depth=0} {while(match($0,/<think>/)){depth++; $0=substr($0,RSTART+RLENGTH)} while(depth>0 && match($0,/<\/think>/)){depth--; $0=substr($0,RSTART+RLENGTH); if(depth==0) next} if(depth==0) print}' 2>/dev/null)
-  #   3. Drop x agent's "exitcode" / "stats" / "I|log" tail lines (anything
-  #      that starts with non-letter, non-CJK tokens).
-  RESPONSE=$(printf '%s' "$RESPONSE" | grep -vE '^-[[:space:]]*[✓✗WIE]\||exitcode:|^[[:space:]]*tags\.[[:space:]]*Let me' 2>/dev/null)
-  #   4. Drop any line that's just "Let me ..." (agent's internal monologue).
-  RESPONSE=$(printf '%s' "$RESPONSE" | grep -vE '^[[:space:]]*Let me (first|continue|structure|update)' 2>/dev/null)
+  #   2. Drop <think>...</think> blocks (multiline). The inner `|| printf '%s'
+  #      "$RESPONSE"` keeps the assignment valid even if awk returns 1
+  #      under a different mawk/gawk build (ubuntu-slim runs mawk).
+  RESPONSE=$(printf '%s' "$RESPONSE" | awk 'BEGIN{depth=0} {while(match($0,/<think>/)){depth++; $0=substr($0,RSTART+RLENGTH)} while(depth>0 && match($0,/<\/think>/)){depth--; $0=substr($0,RSTART+RLENGTH); if(depth==0) next} if(depth==0) print}' 2>/dev/null || printf '%s' "$RESPONSE")
+  #   3. Drop x agent's "exitcode" / "stats" / "I|log" tail lines.
+  #      grep -vE returns 1 when nothing matches, which trips `set -e`.
+  RESPONSE=$(printf '%s' "$RESPONSE" | grep -vE '^-[[:space:]]*[✓✗WIE]\||exitcode:|^[[:space:]]*tags\.[[:space:]]*Let me' 2>/dev/null || printf '%s' "$RESPONSE")
+  #   4. Drop "Let me ..." agent monologue lines.
+  RESPONSE=$(printf '%s' "$RESPONSE" | grep -vE '^[[:space:]]*Let me (first|continue|structure|update)' 2>/dev/null || printf '%s' "$RESPONSE")
 
   # Trim leading/trailing whitespace.
-  REPLY_TEXT=$(printf '%s' "$RESPONSE" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
+  REPLY_TEXT=$(printf '%s' "$RESPONSE" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' 2>/dev/null || printf '%s' "$RESPONSE")
 
   # Guard against empty / broken AI responses.
   if [ -z "$REPLY_TEXT" ]; then
