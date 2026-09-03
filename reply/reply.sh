@@ -72,13 +72,20 @@ setup_ai() {
       debug "setup_ai: type x = $(type x 2>&1 | head -1)"
       debug "setup_ai: about to call x minimax in subshell"
       # Subshell wrapper: x minimax is a sourced-in shell function that
-      # can `exit 1` internally (returns/exits are not the same in bash).
-      # A subshell confines any inner `exit` to itself; `||` catches the
-      # subshell's status.
-      ( x minimax --cfg apikey="$api_key" 2>/dev/null ) || debug "x minimax --cfg apikey ran with non-zero exit"
-      debug "setup_ai: after first x minimax"
-      [ -n "$model" ] || ( x minimax --cfg model="$model" 2>/dev/null ) || debug "x minimax --cfg model ran with non-zero exit"
-      debug "setup_ai: after second x minimax"
+      # can `exit 1` internally. A subshell confines inner exit; outer
+      # `if` keeps the rest of the script decoupled from the rc.
+      if [ -n "$api_key" ]; then
+        ( x minimax --cfg apikey="$api_key" 2>/dev/null ) || debug "x minimax --cfg apikey non-zero"
+        debug "setup_ai: after first x minimax"
+      else
+        debug "setup_ai: api_key empty, skip"
+      fi
+      if [ -n "$model" ]; then
+        ( x minimax --cfg model="$model" 2>/dev/null ) || debug "x minimax --cfg model non-zero"
+        debug "setup_ai: after second x minimax"
+      else
+        debug "setup_ai: model empty, skip"
+      fi
       ;;
     deepseek)
       api_key="${DEEPSEEK_API_KEY:-${DEEPSEEK_APIKEY:-}}"
