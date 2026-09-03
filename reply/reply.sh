@@ -263,15 +263,6 @@ $CONTEXT"
   fi
   debug "after x agent request"
 
-  echo "reply: calling ai (harness=$INPUT_HARNESS)..."
-  AI_OUTPUT=$(mktemp)
-  trap 'rm -f "$AI_OUTPUT"' EXIT
-
-  if ! x agent request --harness "$INPUT_HARNESS" --output "$AI_OUTPUT" --overwrite "$PROMPT"; then
-    echo "reply: AI call failed"
-    exit 1
-  fi
-
   RESPONSE=$(cat "$AI_OUTPUT" 2>/dev/null || true)
 
   # Strip reasoning blocks (multiline), x agent stdout tail noise, and
