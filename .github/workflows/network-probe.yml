@@ -1,0 +1,50 @@
+name: network-probe
+
+# Probe slim / latest reachability to common GH / x-cmd endpoints + DNS check.
+# Used to diagnose whether ubuntu-slim can talk to MiniMax API (or anything else).
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    name: "probe (matrix.runner)"
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        runner:
+          - ubuntu-latest
+          - ubuntu-slim
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: resolve hosts
+        shell: bash
+        run: |
+          set +e
+          echo "== dig =="
+          for host in api.github.com raw.githubusercontent.com registry.npmjs.org x-cmd.com get.x-cmd.com; do
+            printf '%-32s ' "$host"
+            getent hosts "$host" 2>/dev/null | awk '{print $1}' || echo "  NXDOMAIN"
+          done
+
+          echo
+          echo "== curl (3s connect timeout, max 8s total) =="
+          for url in \
+              https://api.github.com \
+              https://raw.githubusercontent.com/x-cmd/get/main/README.md \
+              https://x-cmd.com \
+              https://get.x-cmd.com \
+              https://api.anthropic.com \
+              https://api.openai.com \
+              https://api.deepseek.com \
+              https://huggingface.co \
+          ; do
+            printf '%-50s ' "$url"
+            code=$(curl -sS -o /dev/null -w '%{http_code}|%{time_total}' --connect-timeout 3 --max-time 8 "$url" 2>&1 || echo "FAIL")
+            echo "$code"
+          done
