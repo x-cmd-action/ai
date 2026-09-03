@@ -246,17 +246,23 @@ $CONTEXT"
   echo "reply: calling ai (harness=$INPUT_HARNESS)..."
   AI_OUTPUT=$(mktemp)
   debug "AI_OUTPUT=$AI_OUTPUT"
-  trap 'rm -f "$AI_OUTPUT"' EXIT
+  AGENT_STDERR=$(mktemp)
+  debug "AGENT_STDERR=$AGENT_STDERR"
+  trap 'rm -f "$AI_OUTPUT" "$AGENT_STDERR"' EXIT
 
-  debug "before x agent request (subshell)"
+  debug "before x agent request (subshell + stderr capture)"
   # Subshell to confine any internal `exit` from x-cmd functions.
-  if ! ( x agent request --harness "$INPUT_HARNESS" --output "$AI_OUTPUT" --overwrite "$PROMPT" ); then
+  if ! ( x agent request --harness "$INPUT_HARNESS" --output "$AI_OUTPUT" --overwrite "$PROMPT" 2>"$AGENT_STDERR" ); then
     echo "reply: AI call failed"
     debug "x agent request failed"
+    debug "agent stderr: $(wc -c <"$AGENT_STDERR")B"
+    debug "agent stderr tail: $(tail -10 "$AGENT_STDERR" | tr '\n' '|')"
   else
     debug "x agent request returned 0"
   fi
   debug "after x agent request"
+  debug "AI_OUTPUT size: $(wc -c <"$AI_OUTPUT")B"
+  debug "AI_OUTPUT content: $(head -c 200 "$AI_OUTPUT")"
 
   RESPONSE=$(cat "$AI_OUTPUT" 2>/dev/null || true)
 
