@@ -1,0 +1,82 @@
+name: ai-call-probe
+
+# Isolate `x agent request` on ubuntu-slim vs ubuntu-latest to find where
+# the AI call hangs. Bypasses reply.sh entirely — runs the same commands
+# that reply.sh issues, but with strict timeout, full stderr capture, and
+# a one-liner prompt so the LLM round-trip is short.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    name: "ai-call (matrix.runner)"
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        runner:
+          - ubuntu-latest
+          - ubuntu-slim
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: x-cmd-action/x-cmd@v1
+        with:
+          stream: x7
+
+      - uses: x-cmd-action/this-repo@v1
+
+      - name: ai call (isolated)
+        shell: bash
+        env:
+          MINIMAX_TOKEN: ${{ secrets.MINIMAX_TOKEN }}
+        run: |
+          set -uo pipefail  # no -e: we want to capture failure mode
+          OUT=/tmp/ai-out.txt
+          ERR=/tmp/ai-err.log
+          : > "$OUT"
+          : > "$ERR"
+          export LC_ALL=C
+
+          echo "## runner=${{ matrix.runner }}"
+          echo "## uname: $(uname -a)"
+          echo "## awk:  $(awk --version 2>&1 | head -1 || echo mawk)"
+          echo "## curl: $(curl --version | head -1)"
+          echo "## x env: $(command -v x || echo MISSING)"
+          echo
+
+          echo "## step 1: configure provider"
+          x minimax --cfg apikey="$MINIMAX_TOKEN" 2>"$ERR.tmp" && {
+            echo "provider ok"
+            : > "$ERR.tmp"
+          } || echo "provider step NON-zero (\$?=$?)"
+          echo
+
+          echo "## step 2: warm-up — short prompt with 30s timeout"
+          PROMPT="Reply with the single word 'pong'."
+          START=$(date +%s)
+          if timeout 30 x agent request \
+                --harness x-chat \
+                --output "$OUT" \
+                --overwrite \
+                "$PROMPT" \
+                2>>"$ERR" ; then
+              DUR=$(($(date +%s) - START))
+              echo "short call returned in ${DUR}s, exit 0"
+              echo "out: $(cat $OUT | head -c 300)"
+          else
+              RC=$?
+              DUR=$(($(date +%s) - START))
+              echo "short call timed out / non-zero after ${DUR}s, rc=$RC"
+          fi
+          echo
+          echo "## step 3: stderr tail"
+          tail -50 "$ERR" 2>/dev/null || echo "(empty)"
+          echo
+
+          echo "## step 4: dump /proc status before exit"
+          ps -ef | grep -E "x agent|curl|awk|python" | head -20 || true
