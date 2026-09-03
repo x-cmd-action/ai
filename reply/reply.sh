@@ -105,8 +105,8 @@ setup_ai() {
   debug "setup_ai: case done"
   # Point the x-chat harness at the chosen provider.
   if [ "${INPUT_HARNESS:-x-chat}" = "x-chat" ]; then
-    debug "setup_ai: about to x chat --cur provider"
-    x chat --cur provider="$provider" 2>/dev/null || true
+    debug "setup_ai: about to x chat --cur provider (subshell)"
+    ( x chat --cur provider="$provider" 2>/dev/null ) || debug "x chat --cur non-zero"
     debug "setup_ai: after x chat --cur"
   fi
   debug "setup_ai: EXIT"
