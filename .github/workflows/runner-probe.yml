@@ -1,0 +1,152 @@
+name: runner-probe
+
+# Probe GitHub-hosted runner images for installed software + sizes.
+# Used to decide whether to switch x-cmd-action workflows from
+# ubuntu-latest to a smaller/faster/cheaper image (ubuntu-slim, etc.).
+#
+# Output is captured per-step in the GH Actions UI; the post-step also
+# uploads a .json artifact containing the same data.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    name: probe (${{ matrix.runner }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        runner:
+          - ubuntu-latest
+          - ubuntu-24.04
+          - ubuntu-slim
+          - ubuntu-minimal
+          - ubuntu-22.04
+    steps:
+      - name: probe
+        shell: bash
+        run: |
+          set -euo pipefail
+          STEP_START=$(date +%s.%N)
+          RUNNER="${{ matrix.runner }}"
+
+          echo "## runner=$RUNNER"
+          echo
+
+          # ---- OS ----
+          if [ -f /etc/os-release ]; then
+              . /etc/os-release
+              echo "## os"
+              echo "- id:    ${ID:-unknown}"
+              echo "- name:  ${NAME:-unknown}"
+              echo "- ver:   ${VERSION_ID:-unknown}"
+              echo "- codename: ${VERSION_CODENAME:-unknown}"
+              echo
+          fi
+
+          # ---- resources ----
+          echo "## resources"
+          echo "- cpu:    $(nproc 2>/dev/null || echo 1)"
+          echo "- mem_mb: $(awk '/^MemTotal:/ {print int($2/1024)}' /proc/meminfo 2>/dev/null || echo unknown)"
+          echo "- disk_gb:$(df -BG / | awk 'NR==2 {gsub("G",""); print $2}')"
+          echo "- tmpfs_gb:$(df -BG /tmp 2>/dev/null | awk 'NR==2 {gsub("G",""); print $2}')"
+          echo
+
+          # ---- kernel ----
+          echo "## kernel"
+          uname -a || true
+          echo
+
+          # ---- tool inventory ----
+          # Each line: tool::binary. Skip silently if missing.
+          echo "## tools"
+          printf '%-12s %s\n' "tool" "version"
+          printf '%-12s %s\n' "----" "-------"
+          for pair in \
+              "bash:bash --version" \
+              "git:git --version" \
+              "curl:curl --version" \
+              "wget:wget --version" \
+              "jq:jq --version" \
+              "yq:yq --version" \
+              "tar:tar --version" \
+              "gzip:gzip --version" \
+              "ssh:ssh -V" \
+              "rsync:rsync --version" \
+              "node:node --version" \
+              "npm:npm --version" \
+              "npx:npx --version" \
+              "python3:python3 --version" \
+              "pip3:pip3 --version" \
+              "go:go version" \
+              "java:java -version" \
+              "ruby:ruby --version" \
+              "perl:perl --version" \
+              "gh:gh --version" \
+              "docker:docker --version" \
+              "buildah:buildah --version" \
+              "podman:podman --version" \
+              "gcloud:gcloud --version" \
+              "az:az --version" \
+              "helm:helm version" \
+              "kubectl:kubectl version --client" \
+              "sqlite3:sqlite3 --version" \
+              "psql:psql --version" \
+              "redis-cli:redis-cli --version" \
+              "shellcheck:shellcheck --version" \
+              "shfmt:shfmt --version" \
+              "yq-go:yq --version" \
+              "cosign:cosign version" \
+              "trivy:trivy --version" \
+          ; do
+              tool="${pair%%:*}"
+              cmd="${pair#*:}"
+              ver=$(eval "$cmd" 2>/dev/null | head -1 || echo MISSING)
+              printf '%-12s %s\n' "$tool" "$ver"
+          done
+          echo
+
+          # ---- apt package count (rough indicator of image size) ----
+          if command -v dpkg >/dev/null 2>&1; then
+              echo "## apt"
+              echo "- package_count: $(dpkg-query -f '${binary:Package}\n' -W 2>/dev/null | wc -l)"
+              echo "- nix:           $(command -v nix || echo NOT_INSTALLED)"
+              echo "- homebrew:      $(command -v brew || echo NOT_INSTALLED)"
+              echo
+          fi
+
+          # ---- timing ----
+          STEP_END=$(date +%s.%N)
+          DUR=$(awk "BEGIN {printf \"%.3f\", $STEP_END - $STEP_START}")
+          echo "## timing"
+          echo "- step_seconds: $DUR"
+          echo
+          echo "(Note: step_seconds measures ONLY the script body above, not"
+          echo " VM cold-start. Cold-start = github-billed_seconds - step_seconds.)"
+
+          # ---- machine-readable dump ----
+          {
+              echo "{"
+              echo "  \"runner\": \"$RUNNER\","
+              echo "  \"step_started_at\": \"$STEP_START\","
+              echo "  \"step_seconds\": $DUR"
+              echo "}"
+          } > probe-${RUNNER//\//_}.json
+        - name: upload artifact
+          if: always()
+          shell: bash
+          run: |
+              # Best-effort artifact upload; ignore if no probe-*.json present.
+              shopt -s nullglob
+              files=(probe-*.json)
+              if (( ${#files[@]} > 0 )); then
+                  mkdir -p probe-artifact
+                  cp -v probe-*.json probe-artifact/
+                  echo "ok"
+              else
+                  echo "no json output produced"
+              fi
