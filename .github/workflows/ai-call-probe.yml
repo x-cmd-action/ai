@@ -35,9 +35,10 @@ jobs:
         env:
           MINIMAX_TOKEN: ${{ secrets.MINIMAX_TOKEN }}
         run: |
-          # GH Actions wraps `shell: bash` with `-e -o pipefail`; we want
-          # to keep going past non-zero so we can see what's happening.
+          # No -e anywhere — we want to capture every failure mode.
           set +e
+          set +u
+          set +o pipefail
           # x-cmd-action installs ~/.x-cmd.root but the next GH Actions
           # step runs under `bash --noprofile --norc`, so ~/.bashrc is
           # never sourced. reply.sh has a defensive PATH+=...
@@ -45,8 +46,10 @@ jobs:
           export PATH="$HOME/.x-cmd.root/bin:$PATH"
           # Source x-cmd boot — its opening lines probe unset vars, so
           # `set -u` must come AFTER sourcing, not before.
-          [ -f "$HOME/.x-cmd.root/X" ] && . "$HOME/.x-cmd.root/X"
-          set -uo pipefail
+          [ -f "$HOME/.x-cmd.root/X" ] && . "$HOME/.x-cmd.root/X" || {
+            echo "FATAL: cannot source $HOME/.x-cmd.root/X"
+            exit 0
+          }
           OUT=/tmp/ai-out.txt
           ERR=/tmp/ai-err.log
           : > "$OUT"
@@ -61,10 +64,11 @@ jobs:
           echo
 
           echo "## step 1: configure provider"
-          x minimax --cfg apikey="$MINIMAX_TOKEN" 2>"$ERR.tmp" && {
-            echo "provider ok"
-            : > "$ERR.tmp"
-          } || echo "provider step NON-zero (\$?=$?)"
+          x minimax --cfg apikey="$MINIMAX_TOKEN" >"$OUT" 2>"$ERR"
+          PR=$?
+          echo "provider step rc=$PR"
+          if [ "$PR" = "0" ]; then echo "  out:"; cat "$OUT" | head -10; fi
+          if [ -s "$ERR" ]; then echo "  err:"; cat "$ERR" | head -10; fi
           echo
 
           echo "## step 2: warm-up — short prompt with 30s timeout"
