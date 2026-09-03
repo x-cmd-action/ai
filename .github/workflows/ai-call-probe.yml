@@ -93,5 +93,42 @@ jobs:
           tail -50 "$ERR" 2>/dev/null || echo "(empty)"
           echo
 
-          echo "## step 4: dump /proc status before exit"
+          echo "## step 4: long prompt mirroring reply.sh (~5KB, includes CJK detection)"
+          # Approximate the prompt size/script that reply.sh feeds to
+          # the agent. This is the load that hangs reply.yml's slim run.
+          : > "$OUT"
+          LONG_PROMPT=$(
+              printf '%s\n' "Repository: x-cmd-action/ai"
+              printf '%s\n' "Repository description: AI reply (slack-style AI gate) and friends"
+              printf '%s\n' ""
+              printf '%s\n' "Issue #11: [slim-test-4] reply via . ~/.x-cmd.root/X"
+              printf '%s\n' ""
+              printf '%s\n' "What is a practical tip for using ubuntu-slim with x-cmd in GitHub Actions?"
+              printf '%s\n' "Mention 3 things: (1) how to source x-cmd; (2) what to watch out for with mawk vs gawk in shell scripts; (3) timing expectations."
+              printf '%s\n' ""
+              printf '%s\n' "You are a terse expert. No preamble. Use markdown bullets. Plain ASCII under 200 words."
+          )
+          BYTES=$(printf '%s' "$LONG_PROMPT" | wc -c)
+          echo "long prompt bytes: $BYTES"
+          START=$(date +%s)
+          if timeout 60 x agent request \
+                --harness x-chat \
+                --output "$OUT" \
+                --overwrite \
+                "$LONG_PROMPT" \
+                2>>"$ERR" ; then
+              DUR=$(($(date +%s) - START))
+              echo "long call returned in ${DUR}s"
+              echo "out (first 400 chars): $(cat $OUT | head -c 400)"
+          else
+              RC=$?
+              DUR=$(($(date +%s) - START))
+              echo "long call timed out / non-zero after ${DUR}s, rc=$RC"
+          fi
+          echo
+          echo "## step 5: final stderr tail"
+          tail -100 "$ERR" 2>/dev/null
+          echo
+
+          echo "## step 6: dump /proc status before exit"
           ps -ef | grep -E "x agent|curl|awk|python" | head -20 || true
