@@ -145,6 +145,16 @@ jobs:
           echo "5h: --help"
           x minimax --help 2>&1 | head -10 ; echo "  rc=$?"
 
+          echo "## step 6: env-var-only path (no cfg)"
+          unset MINIMAX_TOKEN
+          echo "MINIMAX_TOKEN env=$MINIMAX_TOKEN"
+          echo "running x minimax --cfg cat under subshell (no env passed in):"
+          ( x minimax --cfg cat ) || echo "  subshell failed"
+          echo "running with env MINIMAX_TOKEN re-set:"
+          MINIMAX_TOKEN="${MINIMAX_TOKEN:-}" ( x minimax --cfg cat ) || echo "  still failed"
+          echo "what does MINIMAX_TOKEN env look like:"
+          echo "  $MINIMAX_TOKEN" | head -c 50
+
           echo
           echo "## step 6: final stderr tail"
           tail -100 "$ERR" 2>/dev/null
