@@ -195,16 +195,27 @@ if [ "${EXISTING:-0}" -gt 0 ]; then
   exit 0
 fi
 
-gh api -X POST "$REACTION_PATH" \
-  -f content="$INPUT_REACTION" 2>/dev/null && \
-  echo "reply: added :$INPUT_REACTION: on $TARGET_DESC" || \
-  echo "reply: failed to add reaction (may already exist)"
+REACTION_ERR=$(mktemp)
+if gh api -X POST "$REACTION_PATH" \
+  -f content="$INPUT_REACTION" 2>"$REACTION_ERR"; then
+  echo "reply: added :$INPUT_REACTION: on $TARGET_DESC"
+else
+  # Surface the real error — a 403 here usually means the workflow token
+  # lacks write permission on the target (e.g. PR conversations need
+  # pull-requests: write, not just issues: write), NOT a dedupe hit.
+  echo "reply: WARNING — failed to add reaction on $TARGET_DESC:" >&2
+  cat "$REACTION_ERR" >&2
+fi
+rm -f "$REACTION_ERR"
 
 COMMENT_BODY="$REPLY_TEXT
 
 <sub>Replied by [x-cmd-action/ai](https://github.com/x-cmd-action/ai)</sub>"
 
-gh issue comment "$ISSUE_NUM" --body "$COMMENT_BODY" && \
+if gh issue comment "$ISSUE_NUM" --body "$COMMENT_BODY"; then
   echo "reply: posted reply"
+else
+  echo "reply: WARNING — failed to post reply on issue #$ISSUE_NUM (GH_TOKEN permissions?)" >&2
+fi
 
 echo "reply: done"
