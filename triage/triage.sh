@@ -20,6 +20,7 @@ fi
 command -v x >/dev/null 2>&1 || { echo "triage: ERROR — 'x' unavailable" >&2; exit 1; }
 
 : "${INPUT_APPLY_LABELS:=true}"
+: "${INPUT_COMMENT:=true}"
 : "${ISSUE_NUM:?ISSUE_NUM required}"
 
 echo "triage: issue #$ISSUE_NUM"
@@ -61,19 +62,30 @@ TLDR=$(printf '%s' "$RESPONSE" | jq -r '.tldr // ""' 2>/dev/null || echo "")
 
 COMMENT_BODY="🤖 **ai triage**
 
-**Priority:** $PRIORITY · **Area:** $AREA
+**Priority:** $PRIORITY · **Area:** $AREA"
 
-**TL;DR:** ${TLDR:-n/a}
+# Only render the TL;DR line when the AI actually produced one.
+if [ -n "$TLDR" ]; then
+  COMMENT_BODY="$COMMENT_BODY
+
+**TL;DR:** $TLDR"
+fi
+
+COMMENT_BODY="$COMMENT_BODY
 
 **Suggested labels:** ${LABELS:-none}
 
 <sub>Triaged by [x-cmd-action/ai](https://github.com/x-cmd-action/ai)</sub>"
 
-if gh issue comment "$ISSUE_NUM" --body "$COMMENT_BODY"; then
-  echo "triage: posted comment"
+if [ "$INPUT_COMMENT" = "true" ]; then
+  if gh issue comment "$ISSUE_NUM" --body "$COMMENT_BODY"; then
+    echo "triage: posted comment"
+  else
+    echo "triage: WARNING — gh issue comment failed (GH_TOKEN permissions?) — writing to job summary" >&2
+    printf '%s\n' "$COMMENT_BODY" >> "${GITHUB_STEP_SUMMARY:-/dev/null}" 2>/dev/null || true
+  fi
 else
-  echo "triage: WARNING — gh issue comment failed (GH_TOKEN permissions?) — writing to job summary" >&2
-  printf '%s\n' "$COMMENT_BODY" >> "${GITHUB_STEP_SUMMARY:-/dev/null}" 2>/dev/null || true
+  echo "triage: comment disabled (comment=false)"
 fi
 
 if [ "$INPUT_APPLY_LABELS" = "true" ] && [ -n "$LABELS" ]; then

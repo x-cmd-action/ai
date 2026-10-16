@@ -14,6 +14,10 @@ inputs:
     description: 'Apply suggested labels (true) or just comment (false).'
     required: false
     default: 'true'
+  comment:
+    description: 'Post the triage summary comment (true) or stay silent (false).'
+    required: false
+    default: 'true'
   issue-number:
     description: 'Issue to triage. Defaults to the issue that triggered the workflow.'
     required: false
@@ -33,6 +37,7 @@ runs:
       shell: bash
       env:
         INPUT_APPLY_LABELS: ${{ inputs.apply-labels }}
+        INPUT_COMMENT: ${{ inputs.comment }}
         GH_TOKEN: ${{ github.token }}
         ISSUE_NUM: ${{ inputs.issue-number || github.event.issue.number }}
         ISSUE_TITLE: ${{ github.event.issue.title }}
