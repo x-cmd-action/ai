@@ -81,11 +81,15 @@ if [ "$INPUT_APPLY_LABELS" = "true" ] && [ -n "$LABELS" ]; then
   IFS=',' read -ra PARTS <<< "$LABELS"
   for l in "${PARTS[@]}"; do
     l_trim=$(printf '%s' "$l" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
-    [ -n "$l_trim" ] && LABEL_ARGS="$LABEL_ARGS --label $l_trim"
+    [ -z "$l_trim" ] && continue
+    # Create the label if the repo doesn't have it yet, then apply it.
+    gh label create "$l_trim" --force >/dev/null 2>&1 || \
+      echo "triage: WARNING — could not create label '$l_trim'"
+    LABEL_ARGS="$LABEL_ARGS --add-label $l_trim"
   done
   # shellcheck disable=SC2086
-  gh issue edit "$ISSUE_NUM" $LABEL_ARGS 2>/dev/null || \
-    echo "triage: some labels not found, applied what existed"
+  gh issue edit "$ISSUE_NUM" $LABEL_ARGS || \
+    echo "triage: WARNING — gh issue edit failed (permissions?)"
 fi
 
 echo "triage: done"

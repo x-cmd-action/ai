@@ -13,6 +13,14 @@ inputs:
     description: 'Look back N days (default 7 = weekly).'
     required: false
     default: '7'
+  output:
+    description: 'comment (stdout) | file'
+    required: false
+    default: 'comment'
+  file:
+    description: 'Output file path when output=file (relative to repo root).'
+    required: false
+    default: 'CHANGELOG.md'
 
 runs:
   using: composite
@@ -28,6 +36,8 @@ runs:
       shell: bash
       env:
         INPUT_DAYS: ${{ inputs.days }}
+        INPUT_OUTPUT: ${{ inputs.output }}
+        INPUT_FILE: ${{ inputs.file }}
         GH_TOKEN: ${{ github.token }}
         GITHUB_REPOSITORY: ${{ github.repository }}
       run: bash "${{ github.action_path }}/changelog.sh"

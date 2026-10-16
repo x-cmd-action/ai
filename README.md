@@ -1,152 +1,210 @@
 # x-cmd-action/ai
 
-> AI toolkit for GitHub Issues & PRs — seven sub-commands, each maps 1:1 to `x ai <subcmd>`. Pure shell, no Node.js. Triggered by GitHub events.
+> AI toolkit for GitHub Issues & PRs — auto-triage issues, AI code review, weekly changelogs, i18n translation, and more. Pure shell, no Node.js, triggered by GitHub events.
 
 [中文文档](./README.cn.md)
 
-## What it is
+## What it does
 
-A **single repository** that exposes seven AI sub-commands. Each sub-command is a separate composite GitHub Action referenceable by path:
+Brings AI into your GitHub workflow and automates the repetitive work around Issues and PRs:
 
-```
-x-cmd-action/ai/triage@v1       →  x ai triage
-x-cmd-action/ai/reply@v1        →  x ai reply
-x-cmd-action/ai/review@v1       →  x ai review
-x-cmd-action/ai/changelog@v1    →  x ai changelog
-x-cmd-action/ai/translate@v1    →  x ai translate
-x-cmd-action/ai/spec@v1         →  x ai spec
-x-cmd-action/ai/commit@v1       →  x ai commit
-```
+- **New issue opened** → auto-classifies type & priority, applies labels, posts an analysis comment
+- **Someone @mentions the bot** → auto-reacts and replies
+- **PR opened** → auto AI code review (security / style / suggestions / summary)
+- **Every Monday morning** → auto-generates a weekly changelog from closed issues + merged PRs
+- **Need docs in multiple languages** → auto-translates Markdown (code blocks untouched, URLs preserved), e.g. `README.md → README.cn.md`
+- **Need an RFC or post-mortem** → auto-extracts a structured document from issue discussion
+- **Messy commit messages** → auto-validates or generates Conventional Commits messages
 
-The design principle: **local-first.** If you can run `x ai triage` on your laptop, the same logic runs in CI — only the trigger changes (manual vs `issues: opened`).
+Highlights: **pure shell, no Node.js**; triggered by GitHub events (issue opened, PR synced, schedule, etc.); each feature is a standalone composite action you can adopt with a single `uses:` line.
 
-The seven sub-commands together form an **IssueOps & DevProd** matrix:
+## How to use
 
-| Action reference | Local command | Core job |
-|---|---|---|
-| `x-cmd-action/ai/triage@v1` | `x ai triage` | Auto-classify new issues: type + priority + labels |
-| `x-cmd-action/ai/reply@v1` | `x ai reply` | React + reply when `@keyword` is mentioned |
-| `x-cmd-action/ai/review@v1` | `x ai review` | AI code review on PR diff (security + style + summary) |
-| `x-cmd-action/ai/changelog@v1` | `x ai changelog` | Weekly community update from closed issues + merged PRs |
-| `x-cmd-action/ai/translate@v1` | `x ai translate` | AI i18n translation for Markdown / locale files |
-| `x-cmd-action/ai/spec@v1` | `x ai spec` | RFC template fill-in + post-mortem extraction |
-| `x-cmd-action/ai/commit@v1` | `x ai commit` | Conventional Commits check / generate |
-
-## Architecture
+Each feature is a standalone composite action — just reference it with `uses:` in a workflow:
 
 ```
-x-cmd-action/ai/
-├── triage/                  # AI issue triage
-│   ├── action.yml
-│   └── triage.sh
-├── reply/                   # React + reply on @keyword
-│   ├── action.yml
-│   └── reply.sh
-├── review/                  # AI PR code review
-│   ├── action.yml
-│   └── review.sh
-├── changelog/               # Weekly changelog
-│   ├── action.yml
-│   └── changelog.sh
-├── translate/               # AI i18n
-│   ├── action.yml
-│   └── translate.sh
-├── spec/                    # RFC + post-mortem
-│   ├── action.yml
-│   └── spec.sh
-├── commit/                  # Conventional Commits
-│   ├── action.yml
-│   └── commit.sh
-└── .gitattributes           # tarball stripping
+x-cmd-action/ai/triage@v1
+x-cmd-action/ai/reply@v1
+x-cmd-action/ai/review@v1
+x-cmd-action/ai/changelog@v1
+x-cmd-action/ai/translate@v1
+x-cmd-action/ai/spec@v1
+x-cmd-action/ai/commit@v1
 ```
 
-### Design choices
+For example, adding "auto-triage new issues" to a repo takes one workflow file:
 
-1. **One repo, seven sub-commands.** Each sub-command lives in its own subdirectory with its own `action.yml`. Users reference it via `x-cmd-action/ai/<subcmd>@v1` — no `task:` discriminator input that would break the 1:1 mapping with `x ai <subcmd>`.
-
-2. **Flat structure — no `lib/`.** Each sub-command is self-contained: `action.yml` + exactly one shell script. The only common dependency (installing `x-cmd`) is extracted into a separate composite action: [`x-cmd-action/x-cmd`](https://github.com/x-cmd-action/x-cmd).
-
-3. **`x-cmd-action/x-cmd` is the single base dependency.** Every sub-command's first step is `- uses: x-cmd-action/x-cmd@v1`. It installs `x-cmd` into `~/.x-cmd.root/` and sources `X` so subsequent steps have access to `x ai`, `x gh`, `x minimax`, etc.
-
-4. **`x-cmd-action/this-repo` provides git context for `gh`.** Because the `gh` CLI requires a working git repository context for many of its sub-commands, every sub-command's second step is `- uses: x-cmd-action/this-repo@v1` (a pure-shell clone of the current repository into `$GITHUB_WORKSPACE`).
-
-5. **Pure shell, no Node.js.** All scripts are POSIX `bash`. No `npm install`, no dependency tree, fast cold-start. The tarball per sub-command is ~16 KB.
-
-6. **AI token via env, not action input.** The token is read from env vars that x-cmd's provider modules pick up automatically — `MINIMAX_API_KEY`, `DEEPSEEK_API_KEY`, `GEMINI_API_KEY`, `XAI_API_KEY` (Grok), `MISTRAL_API_KEY`, `MOONSHOT_API_KEY`, `OPENAI_API_KEY`, etc. Pass one via `secrets.*` (e.g. `MINIMAX_API_KEY: ${{ secrets.MINIMAX_API_KEY }}`). Local equivalent: `x <provider> --cfg apikey=...`.
-
-### Dependency graph
-
+```yaml
+# .github/workflows/triage.yml
+name: triage
+on:
+  issues:
+    types: [opened]
+jobs:
+  triage:
+    runs-on: ubuntu-latest
+    permissions: { issues: write, pull-requests: write }   # PR conversations need pull-requests: write
+    steps:
+      - uses: x-cmd-action/ai/triage@v1
+        env:
+          MINIMAX_API_KEY: ${{ secrets.MINIMAX_API_KEY }}   # DEEPSEEK / GEMINI / OPENAI also supported
 ```
-x-cmd-action/ai/<subcmd>@v1
-  ├── uses → x-cmd-action/x-cmd@v1          # install x-cmd
-  ├── uses → x-cmd-action/this-repo@v1       # clone current repo for gh context
-  └── uses → secrets.<PROVIDER>_API_KEY (env)  # only sub-commands that call an LLM
-```
+
+**How to pass the AI token?** Every AI-calling sub-command reads its token from an environment variable — pass it via `env:` + `secrets`. Supported providers:
+
+| Env var | Provider |
+|---|---|
+| `MINIMAX_API_KEY` | MiniMax |
+| `DEEPSEEK_API_KEY` | DeepSeek |
+| `GEMINI_API_KEY` | Google Gemini |
+| `XAI_API_KEY` | xAI (Grok) |
+| `MISTRAL_API_KEY` | Mistral |
+| `MOONSHOT_API_KEY` | Moonshot (Kimi) |
+| `OPENAI_API_KEY` | OpenAI |
+
+Exceptions: `reply` with a static comment and `commit` in `check` mode (format validation only) don't need an AI token.
+
+Feature overview:
+
+| Action reference | What it's for |
+|---|---|
+| [`x-cmd-action/ai/triage@v1`](#aitriage--auto-triage-new-issues) | Auto-classify new issues: type + priority + labels |
+| [`x-cmd-action/ai/reply@v1`](#aireply--react--reply-on-keyword) | React + reply when `@keyword` is mentioned |
+| [`x-cmd-action/ai/review@v1`](#aireview--auto-pr-code-review) | AI code review on PR diff (security + style + summary) |
+| [`x-cmd-action/ai/changelog@v1`](#aichangelog--weekly-changelog-generator) | Weekly changelog from closed issues + merged PRs |
+| [`x-cmd-action/ai/translate@v1`](#aitranslate--auto-translate-markdown) | AI translation for Markdown / locale files |
+| [`x-cmd-action/ai/spec@v1`](#aispec--auto-rfc--post-mortem) | RFC template fill-in + post-mortem extraction |
+| [`x-cmd-action/ai/commit@v1`](#aicommit--check--generate-conventional-commits) | Conventional Commits check / generate |
 
 ## Sub-command details
 
-### `ai/triage` — AI issue triage
+Each sub-command is documented as **what it's for → when it triggers → how to use it**, with a complete workflow example and all inputs.
 
-Triggered on `issues: opened`. Reads the issue body + comments, asks the AI for `type` / `priority` / `area` / `labels` / `summary`, posts the result as a comment, and (if `apply-labels: true`) applies the suggested labels.
+### `ai/triage` — auto-triage new issues
+
+**What it's for**: when a new issue is created, it auto-classifies type / priority / area and applies labels, optionally posting a summary comment — mix and match via `comment` / `apply-labels`.
+
+**When it triggers**: `issues: opened`. You can also triage any issue manually via `issue-number`.
+
+**How to use it**:
 
 ```yaml
-- uses: x-cmd-action/ai/triage@v1
-  with:
-    apply-labels: 'true'   # or 'false' to comment only
-  env:
-    MINIMAX_API_KEY: ${{ secrets.MINIMAX_API_KEY }}
+# .github/workflows/triage.yml
+name: triage
+on:
+  issues:
+    types: [opened]
+jobs:
+  triage:
+    runs-on: ubuntu-latest
+    permissions: { issues: write }
+    steps:
+      - uses: x-cmd-action/ai/triage@v1
+        with:
+          apply-labels: 'true'     # 'false' to comment only, without labels
+          comment: 'true'          # 'false' to apply labels without posting a comment
+          # issue-number: '123'    # optional: triage a specific issue (default: the one that triggered)
+        env:
+          MINIMAX_API_KEY: ${{ secrets.MINIMAX_API_KEY }}
 ```
 
 | Input | Default | Description |
 |---|---|---|
-| `apply-labels` | `true` | Apply suggested labels automatically; set to `false` to comment only |
+| `apply-labels` | `true` | Apply suggested labels; `false` to comment only |
+| `comment` | `true` | Post the summary comment; `false` to apply labels silently |
+| `issue-number` | the triggering issue | Triage a specific issue number |
+
+The **TL;DR** line only appears when the AI actually produced a summary — no `n/a` placeholder.
 
 ### `ai/reply` — react + reply on keyword
 
-Triggered on `issue_comment: created` and `issues: opened`. When a configurable keyword (default `@x`) appears with **strict word-boundary** matching (so `@x-cmd` doesn't trigger), adds a reaction and posts a reply.
+**What it's for**: when someone mentions a keyword (default `@x`) in an issue or comment, it auto-adds a reaction and posts a reply. The reply can be a static comment or AI-generated from the context. Good for "bot ack" and auto-responder scenarios.
+
+**When it triggers**: `issue_comment: created` (new comment) and `issues: opened` (new issue).
+
+**Notes**: strict word-boundary matching (`@x` won't trigger on `@x-cmd`); the same reaction is added only once per comment, so re-edits don't spam.
+
+**Note:** when the `@` mention happens on a **pull request**, both the reaction and the reply write to the PR conversation — the workflow needs `pull-requests: write` in addition to `issues: write`, or every write fails with 403 `Resource not accessible by integration`.
+
+**How to use it**:
 
 ```yaml
-- uses: x-cmd-action/ai/reply@v1
-  with:
-    keyword: '@x'
-    reaction: eyes          # eyes | rocket | +1 | heart | laugh | hooray | ...
-    comment: '👀 on it'
+# .github/workflows/reply.yml
+name: reply
+on:
+  issue_comment:
+    types: [created]
+  issues:
+    types: [opened]
+jobs:
+  reply:
+    runs-on: ubuntu-latest
+    permissions: { issues: write }
+    concurrency: { group: ai-reply, cancel-in-progress: false }   # optional: queue runs to avoid spam
+    steps:
+      - uses: x-cmd-action/ai/reply@v1
+        with:
+          keyword: '@x'           # trigger keyword (word-boundary matched)
+          reaction: eyes          # eyes | rocket | +1 | heart | laugh | hooray | ...
+          comment: '👀 on it'     # static reply body
+          # use_ai: 'true'        # let AI generate the reply from context instead
+          # prompt: 'Reply in casual Chinese'   # optional: extra guidance for the AI
+        env:
+          MINIMAX_API_KEY: ${{ secrets.MINIMAX_API_KEY }}   # only needed with use_ai: 'true'
 ```
 
 | Input | Default | Description |
 |---|---|---|
-| `keyword` | `@x` | Trigger keyword. Word-boundary matched (`@x` won't match `@x-cmd`) |
+| `keyword` | `@x` | Trigger keyword, word-boundary matched (`@x` won't match `@x-cmd`) |
 | `reaction` | `eyes` | Reaction name (see [GitHub API](https://docs.github.com/en/rest/reactions/reactions-about-issue-comment)) |
-| `comment` | `👀 on it` | Reply comment body |
+| `comment` | `👀 on it` | Static reply body (used when `use_ai: 'false'`) |
+| `use_ai` | `false` | `true` to generate the reply with AI |
+| `prompt` | (empty) | Extra guidance for the AI (inline text) |
+| `prompt-file` | (empty) | Extra guidance for the AI (markdown file path; used when `prompt` is empty) |
 
-**Dedupe:** per-target reaction. If the triggering comment/issue already has the configured reaction, the action is a no-op. Prevents spam if the same comment is re-edited or the same issue is mentioned multiple times.
+### `ai/review` — auto PR code review
 
-**Concurrency-safe:** the action does not manage concurrency itself — that's the caller's job (use `concurrency: cancel-in-progress: false` with `queue: single` default for single in-flight + single pending).
+**What it's for**: when a PR is opened or updated, it fetches the diff and asks the AI to review it across security / style / suggestions / summary, posted as a structured comment. Diffs over 1500 lines are truncated so even huge PRs get reviewed.
 
-### `ai/review` — AI PR code review
+**When it triggers**: `pull_request: opened` / `synchronize`.
 
-Triggered on `pull_request: opened` / `synchronize`. Reads the PR diff via `gh pr diff`, asks the AI for security / style / suggestions / summary, posts a structured comment on the PR.
-
-Diffs larger than 1500 lines are truncated (configurable via `max-diff-lines`) to keep prompts sane.
+**How to use it**:
 
 ```yaml
-- uses: actions/checkout@v4
-  with: { fetch-depth: 0 }
-- uses: x-cmd-action/ai/review@v1
-  env:
-    MINIMAX_API_KEY: ${{ secrets.MINIMAX_API_KEY }}
+# .github/workflows/review.yml
+name: review
+on:
+  pull_request:
+    types: [opened, synchronize]
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    permissions: { pull-requests: write }
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: x-cmd-action/ai/review@v1
+        env:
+          MINIMAX_API_KEY: ${{ secrets.MINIMAX_API_KEY }}
 ```
+
+No inputs.
 
 ### `ai/changelog` — weekly changelog generator
 
-Triggered on `schedule: cron` (recommended weekly: Mon 9am UTC). Collects issues closed in the last N days + PRs merged, asks the AI to group them into `Features / Fixes / Performance / Docs / Other`, writes the result.
+**What it's for**: on a schedule, it collects issues closed and PRs merged in the last N days, and asks the AI to group them into Features / Fixes / Performance / Docs / Other as a changelog. `output: file` writes it to a file (commit it yourself); `output: comment` prints it to the log (post it to a Release / Discussion yourself).
 
-`output: file` writes to `CHANGELOG.md` (configurable); `output: comment` writes to stdout (caller's responsibility).
+**When it triggers**: `schedule: cron` (weekly recommended), or `workflow_dispatch` for manual runs.
+
+**How to use it**:
 
 ```yaml
+# .github/workflows/changelog.yml
+name: changelog
 on:
   schedule:
-    - cron: '0 9 * * 1'   # Mon 9am UTC
+    - cron: '0 9 * * 1'      # Monday 9am UTC
+  workflow_dispatch:
 jobs:
   changelog:
     runs-on: ubuntu-latest
@@ -155,108 +213,161 @@ jobs:
       - uses: actions/checkout@v4
       - uses: x-cmd-action/ai/changelog@v1
         with:
-          days: 7
-          output: file      # or 'comment'
+          days: 7                # look back N days (default 7)
+          output: file           # 'file' to write a file | 'comment' to print to the log
+          # file: CHANGELOG.md   # output path when output=file (default CHANGELOG.md)
+        env:
+          MINIMAX_API_KEY: ${{ secrets.MINIMAX_API_KEY }}
+      # with output: file, commit the result yourself:
+      - run: |
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git add CHANGELOG.md
+          git diff --cached --quiet || git commit -m "docs: update changelog"
+          git push
+```
+
+| Input | Default | Description |
+|---|---|---|
+| `days` | `7` | Look back N days for closed issues / merged PRs |
+| `output` | `comment` | `file` to write a file \| `comment` to print to stdout |
+| `file` | `CHANGELOG.md` | Output path when `output: file` (repo-relative) |
+
+### `ai/translate` — auto-translate Markdown
+
+**What it's for**: translates a Markdown file into a target language. Code blocks, inline code, URLs, and proper nouns are preserved. Most often used for `README.md → README.cn.md`-style multi-language doc maintenance. Files over 3000 lines are truncated.
+
+**When it triggers**: any event — commonly `workflow_dispatch` (manual) or on changes to the source file.
+
+**How to use it**:
+
+```yaml
+# .github/workflows/translate.yml
+name: translate
+on:
+  workflow_dispatch:
+jobs:
+  translate:
+    runs-on: ubuntu-latest
+    permissions: { contents: write }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: x-cmd-action/ai/translate@v1
+        with:
+          source: README.md       # source file (required, repo-relative path)
+          target: zh              # target language, ISO 639-1 code (required)
+          # output: README.zh.md  # optional, default <stem>.<target>.<ext> (e.g. README.zh.md)
+        env:
+          MINIMAX_API_KEY: ${{ secrets.MINIMAX_API_KEY }}
+      # the translation is written to a new file — commit it yourself:
+      - run: |
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git add README.zh.md
+          git diff --cached --quiet || git commit -m "docs: translate README to zh"
+          git push
+```
+
+| Input | Default | Description |
+|---|---|---|
+| `source` | (required) | Source file path (repo-relative) |
+| `target` | (required) | Target language ISO 639-1 code, e.g. `zh`, `ja`, `fr` |
+| `output` | `<stem>.<target>.<ext>` | Output file path |
+
+### `ai/spec` — auto RFC & post-mortem
+
+**What it's for**: two modes —
+
+- `rfc`: turns a feature request issue into a structured design doc (Summary / Motivation / Detailed Design / Alternatives / Drawbacks / Open Questions), posted as a comment on the issue.
+- `postmortem`: extracts a structured post-mortem from a closed bug issue (including the debugging discussion): Summary / Timeline / Root Cause / Detection / Resolution / Lessons Learned / Action Items.
+
+**When it triggers**: `issues: opened` (with `mode: rfc`) or `issues: closed` (with `mode: postmortem`); you can also point `issue-number` at any issue.
+
+**How to use it**:
+
+```yaml
+# .github/workflows/spec.yml
+name: spec
+on:
+  issues:
+    types: [opened, closed]
+jobs:
+  spec:
+    runs-on: ubuntu-latest
+    permissions: { issues: write }
+    steps:
+      - uses: x-cmd-action/ai/spec@v1
+        with:
+          mode: rfc                # 'rfc' design doc | 'postmortem' incident review
+          # issue-number: '123'    # optional: source issue (default: the one that triggered)
         env:
           MINIMAX_API_KEY: ${{ secrets.MINIMAX_API_KEY }}
 ```
 
-### `ai/translate` — AI i18n translation
+| Input | Default | Description |
+|---|---|---|
+| `mode` | (required) | `rfc` (auto-fill RFC template) \| `postmortem` (extract from a closed bug) |
+| `issue-number` | the triggering issue | Source issue number |
 
-Reads a Markdown file, asks the AI to translate to a target language, writes the result. Markdown-aware — code blocks are preserved (not translated), URLs and proper nouns are kept. Files larger than 3000 lines are truncated.
+### `ai/commit` — check & generate Conventional Commits
 
-Useful for `README.md → README.cn.md` workflows.
+**What it's for**: two modes —
 
-```yaml
-- uses: x-cmd-action/ai/translate@v1
-  with:
-    source: README.md
-    target: zh           # ISO 639-1 code
-    # output: README.zh.md   # optional, default: <stem>.<target>.<ext>
-  env:
-    MINIMAX_API_KEY: ${{ secrets.MINIMAX_API_KEY }}
-```
-
-### `ai/spec` — RFC templates & post-mortems
-
-Two modes:
-
-- `rfc` — auto-fill an RFC template from a feature request issue. The AI reads the issue + labels, produces a structured RFC document with Summary / Motivation / Detailed Design / Alternatives / Drawbacks / Open Questions sections.
-- `postmortem` — extract a structured post-mortem from a closed bug issue. The AI reads the issue + comments (which usually contain debugging + fix discussion), produces Summary / Timeline / Root Cause / Detection / Resolution / Lessons Learned / Action Items.
-
-```yaml
-- uses: x-cmd-action/ai/spec@v1
-  with:
-    mode: rfc            # or 'postmortem'
-  env:
-    MINIMAX_API_KEY: ${{ secrets.MINIMAX_API_KEY }}
-```
-
-### `ai/commit` — Conventional Commits
-
-Two modes:
-
-- `check` — validate that commits in the current branch (vs `origin/main`) conform to [Conventional Commits](https://www.conventionalcommits.org/). Fails the workflow by default if any commits don't conform (`fail-on-invalid: false` to make it advisory).
-- `generate` — write a commit message from the staged (or unstaged) diff using the AI.
+- `check`: validates that commits on the current branch (vs `main`) follow [Conventional Commits](https://www.conventionalcommits.org/). Fails the workflow by default on invalid commits; optionally lets the AI post a PR comment with suggested rewrites.
+- `generate`: writes a Conventional Commits message from the current working-tree changes, exported as the `commit_message` output — add one `git commit` step and you're done.
 
 Pairs naturally with `ai/changelog` — the cleaner the commit history, the better the auto-generated changelog.
 
+**When it triggers**: `pull_request` (check), or any step where you need a commit message (generate).
+
+**How to use it**:
+
 ```yaml
+# check: validate commit messages on a PR
+# .github/workflows/commit-check.yml
+name: commit-check
+on:
+  pull_request:
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    permissions: { issues: write, pull-requests: write }
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }     # check mode needs the full branch history
+      - uses: x-cmd-action/ai/commit@v1
+        with:
+          mode: check
+          fail-on-invalid: 'true'    # 'false' to warn instead of failing
+          # review_invalid: 'true'   # let the AI comment suggested rewrites on the PR
+          # pr_num: ${{ github.event.pull_request.number }}
+        env:
+          MINIMAX_API_KEY: ${{ secrets.MINIMAX_API_KEY }}   # only needed with review_invalid
+```
+
+```yaml
+# generate: write a commit message and commit
 - uses: x-cmd-action/ai/commit@v1
+  id: ai-commit
   with:
-    mode: check          # or 'generate'
-    fail-on-invalid: 'true'   # check mode only
+    mode: generate
+    # stage_all: 'true'          # git add -A first so new files are included (default true)
+  env:
+    MINIMAX_API_KEY: ${{ secrets.MINIMAX_API_KEY }}
+- name: commit with AI-generated message
+  run: git commit -m "${{ steps.ai-commit.outputs.commit_message }}"
 ```
 
-## Comparison: why sub-path actions instead of `task:` input?
-
-| Approach | Pros | Cons |
+| Input | Default | Description |
 |---|---|---|
-| **One repo per sub-command** (e.g. `x-cmd-action/ai-triage`) | Familiar; one repo per release | 7 repos, 7 v1 tags, 7 CI configs; x-cmd installed 7 times |
-| **One repo, sub-path actions** ✅ this | One v1 tag, one CI; users pick by `uses:` path; preserves `x ai <subcmd>` mapping | Slightly less obvious naming |
-| **One repo, single action + `task` input** | Simplest repo layout | Users pass `with: task: triage`; breaks 1:1 with `x ai triage` |
+| `mode` | (required) | `check` (validate) \| `generate` (write a message) |
+| `commit_limit` | `50` | check mode: max commits to validate |
+| `fail-on-invalid` | `true` | check mode: fail the step when invalid commits are found |
+| `review_invalid` | (empty) | check mode: non-empty lets the AI comment invalid commits + suggested rewrites on the PR |
+| `pr_num` | (empty) | check mode: PR number the AI comment is posted to |
+| `stage_all` | `true` | generate mode: run `git add -A` before generating |
 
-We chose the sub-path approach because it preserves the **1:1 mapping** between local (`x ai triage`) and remote (`x-cmd-action/ai/triage@v1`), which is the core design promise.
-
-## Tarball policy
-
-`.gitattributes` strips:
-
-```
-.gitattributes    export-ignore
-.github           export-ignore
-*.md              export-ignore
-```
-
-So `git archive` (used by `uses: x-cmd-action/ai/<subcmd>@v1`) ships only:
-
-```
-triage/action.yml + triage/triage.sh
-reply/action.yml + reply/reply.sh
-review/action.yml + review/review.sh
-changelog/action.yml + changelog/changelog.sh
-translate/action.yml + translate/translate.sh
-spec/action.yml + spec/spec.sh
-commit/action.yml + commit/commit.sh
-```
-
-Each sub-command tarball is ~16 KB.
-
-## Status
-
-All seven sub-commands are **implemented** as of v1:
-
-| Sub-command | Implementation |
-|---|---|
-| `triage` | Delegates to `x ai triage --json` (priority/area/labels built in), posts summary + applies labels |
-| `reply` | Strict word-boundary keyword match, per-target reaction dedupe (no AI token required) |
-| `review` | Fetches PR diff via `gh pr diff`, delegates to `x ai review -`, posts as PR comment |
-| `changelog` | Collects closed issues + merged PRs in last N days, delegates to `x ai changelog -` |
-| `translate` | Delegates to `x ai translate` (Markdown-aware prompt preserves code blocks) |
-| `spec` | Fetches issue + comments, delegates to `x ai spec --mode rfc\|postmortem -` |
-| `commit` | Conventional Commits check via `x ai commit --check`, or `x ai commit --generate --full` |
-
-All AI sub-commands need one provider token via env (e.g. `MINIMAX_API_KEY`, `DEEPSEEK_API_KEY`, `GEMINI_API_KEY`, `XAI_API_KEY`, `MISTRAL_API_KEY`, `MOONSHOT_API_KEY`, `OPENAI_API_KEY`, ...), or an equivalent `x <provider> --cfg apikey=...` config.
+**Output**: `commit_message` (the generated commit message in generate mode; empty when there are no changes)
 
 ## License
 
